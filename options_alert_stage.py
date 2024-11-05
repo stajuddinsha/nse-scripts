@@ -107,10 +107,6 @@ def insert_data_into_db(conn, data):
 
     try:
         with conn.cursor() as cur:
-            # Track the number of ITM options processed for each type (PE and CE)
-            itm_count = {'PE': 0, 'CE': 0}
-            max_itm = 10  # Limit to first 10 ITM options
-
             for option in data['filtered']['data']:
                 underlying_value = option['PE']['underlyingValue'] if 'PE' in option else option['CE']['underlyingValue'] if 'CE' in option else None
 
@@ -130,9 +126,7 @@ def insert_data_into_db(conn, data):
                                 in_the_money = True
 
                         # Only process the first 10 ITM options for each type
-                        if in_the_money and itm_count[option_type] < max_itm:
-                            itm_count[option_type] += 1
-
+                        if in_the_money:
                             max_p_change = get_max_p_change_for_today(conn, option_data["identifier"])
 
                             date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
@@ -147,35 +141,27 @@ def insert_data_into_db(conn, data):
                             # Logging the current data being processed
                             logging.info(f"Inserting data for {option_data['underlying']} {option_type} at strike price {option['strikePrice']}.")
 
-                            # cur.execute(insert_query, (
-                            #     option_data['underlying'],
-                            #     option['strikePrice'],
-                            #     option_data['expiryDate'],
-                            #     option_data['openInterest'],
-                            #     option_data['changeinOpenInterest'],
-                            #     option_data['pChange'],
-                            #     option_data['totalTradedVolume'],
-                            #     option_data['impliedVolatility'],
-                            #     option_data['lastPrice'],
-                            #     option_data['totalBuyQuantity'],
-                            #     option_data['totalSellQuantity'],
-                            #     option_data['bidQty'],
-                            #     option_data['bidprice'],
-                            #     option_data['askQty'],
-                            #     option_data['askPrice'],
-                            #     option_data['underlyingValue'],
-                            #     option_type,
-                            #     option_data['identifier'],
-                            #     datetime.now()
-                            # ))
-
-                            date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
-
-                            # Check for alerts based on p_change and in-the-money condition
-                            if abs(option_data['pChange']) >= threshold:
-                                alert_message = f"Alert: {date_time} {option_data['identifier']} option at strike price {option['strikePrice']} has p_change of {option_data['pChange']}% and is in the money (Underlying Value: {underlying_value})."
-                                alerts.append(alert_message)
-                                send_alert_to_slack(alert_message)  # Send alert to Slack
+                            cur.execute(insert_query, (
+                                option_data['underlying'],
+                                option['strikePrice'],
+                                option_data['expiryDate'],
+                                option_data['openInterest'],
+                                option_data['changeinOpenInterest'],
+                                option_data['pChange'],
+                                option_data['totalTradedVolume'],
+                                option_data['impliedVolatility'],
+                                option_data['lastPrice'],
+                                option_data['totalBuyQuantity'],
+                                option_data['totalSellQuantity'],
+                                option_data['bidQty'],
+                                option_data['bidprice'],
+                                option_data['askQty'],
+                                option_data['askPrice'],
+                                option_data['underlyingValue'],
+                                option_type,
+                                option_data['identifier'],
+                                datetime.now()
+                            ))
 
             conn.commit()
             logging.info("Data inserted successfully!")
