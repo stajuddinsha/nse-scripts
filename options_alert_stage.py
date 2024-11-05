@@ -25,6 +25,7 @@ SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/T06LF2VCAQ6/B07PE73AG3X/gC
 
 # Bypass flag
 BYPASS_MARKET_HOURS_CHECK = False  # Set to True to bypass the market hours check
+SEND_ALERTS = True
 
 
 def get_max_p_change_for_today(conn, identifier):
@@ -131,12 +132,11 @@ def insert_data_into_db(conn, data):
 
                             date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
-                            if max_p_change != None:
+                            if max_p_change != None and abs(option_data['pChange']) >= threshold and abs(option_data['pChange']) >= max_p_change and SEND_ALERTS:
                                 # Check for alerts based on p_change and in-the-money condition
-                                if abs(option_data['pChange']) >= threshold and abs(option_data['pChange']) >= max_p_change:
-                                    alert_message = f"Alert: {date_time} {option_data['identifier']} option at strike price {option['strikePrice']} has p_change of {option_data['pChange']}% and is in the money (Underlying Value: {underlying_value})."
-                                    alerts.append(alert_message)
-                                    send_alert_to_slack(alert_message)  # Send alert to Slack
+                                alert_message = f"Alert: {date_time} {option_data['identifier']} option at strike price {option['strikePrice']} has p_change of {option_data['pChange']}% and is in the money (Underlying Value: {underlying_value})."
+                                alerts.append(alert_message)
+                                send_alert_to_slack(alert_message)  # Send alert to Slack
 
                             # Logging the current data being processed
                             logging.info(f"Inserting data for {option_data['underlying']} {option_type} at strike price {option['strikePrice']}.")
