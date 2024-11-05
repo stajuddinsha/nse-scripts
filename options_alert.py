@@ -107,10 +107,6 @@ def insert_data_into_db(conn, data):
 
     try:
         with conn.cursor() as cur:
-            # Track the number of ITM options processed for each type (PE and CE)
-            itm_count = {'PE': 0, 'CE': 0}
-            max_itm = 10  # Limit to first 10 ITM options
-
             for option in data['filtered']['data']:
                 underlying_value = option['PE']['underlyingValue'] if 'PE' in option else option['CE']['underlyingValue'] if 'CE' in option else None
 
@@ -130,9 +126,7 @@ def insert_data_into_db(conn, data):
                                 in_the_money = True
 
                         # Only process the first 10 ITM options for each type
-                        if in_the_money and itm_count[option_type] < max_itm:
-                            itm_count[option_type] += 1
-
+                        if in_the_money:
                             max_p_change = get_max_p_change_for_today(conn, option_data["identifier"])
 
                             date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
