@@ -132,7 +132,7 @@ def insert_data_into_db(conn, data):
 
                             date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
-                            if max_p_change != None and abs(option_data['pChange']) >= threshold and abs(option_data['pChange']) >= max_p_change and SEND_ALERTS:
+                            if max_p_change != None and abs(option_data['pChange']) >= threshold and abs(option_data['pChange']) > max_p_change and SEND_ALERTS:
                                 # Check for alerts based on p_change and in-the-money condition
                                 alert_message = f"Alert: {date_time} {option_data['identifier']} option at strike price {option['strikePrice']} has p_change of {option_data['pChange']}% and is in the money (Underlying Value: {underlying_value})."
                                 alerts.append(alert_message)
