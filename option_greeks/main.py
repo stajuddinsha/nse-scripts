@@ -1,5 +1,6 @@
 from slack_sdk.webhook import WebhookClient
 import time
+import datetime
 import sys
 sys.path.append("/home/taj/workspace/STOCK_MARKET/nsedata/nselib")
 from nselib import derivatives
@@ -38,34 +39,22 @@ def analyze_directional_moves(option_chain):
     messages = []
     for entry in option_chain:
         strike_price = entry['strikePrice']
-        expiry_date = entry['expiryDate']
 
         # Call (CE) Analysis
         if 'CE' in entry:
             ce_data = entry['CE']
             if ce_data['changeinOpenInterest'] > 10000 and ce_data['impliedVolatility'] > 50:
-                messages.append(
-                    f"📈 Bullish Move Likely\n"
-                    f"Strike: {strike_price}, Expiry: {expiry_date}\n"
-                    f"OI Change: {ce_data['changeinOpenInterest']}, IV: {ce_data['impliedVolatility']}%\n"
-                    f"LTP: {ce_data['lastPrice']}"
-                )
+                messages.append(f"📈 Bullish Move Likely: Strike {strike_price}")
 
         # Put (PE) Analysis
         if 'PE' in entry:
             pe_data = entry['PE']
             if pe_data['changeinOpenInterest'] > 10000 and pe_data['impliedVolatility'] > 50:
-                messages.append(
-                    f"📉 Bearish Move Likely\n"
-                    f"Strike: {strike_price}, Expiry: {expiry_date}\n"
-                    f"OI Change: {pe_data['changeinOpenInterest']}, IV: {pe_data['impliedVolatility']}%\n"
-                    f"LTP: {pe_data['lastPrice']}"
-                )
+                messages.append(f"📉 Bearish Move Likely: Strike {strike_price}")
     return messages
 
 # Function to analyze skew and max pain
 def analyze_skew_and_max_pain(option_chain):
-    atm_skew = []
     max_pain_strike = None
     total_loss = float('inf')
 
@@ -73,11 +62,8 @@ def analyze_skew_and_max_pain(option_chain):
         strike_price = entry['strikePrice']
         call_oi = entry['CE']['openInterest'] if 'CE' in entry else 0
         put_oi = entry['PE']['openInterest'] if 'PE' in entry else 0
-        skew = put_oi - call_oi  # Simple skew calculation
 
-        atm_skew.append((strike_price, skew))
-
-        # Max Pain Calculation (Sum of Call and Put OI)
+        # Max Pain Calculation
         call_loss = call_oi * abs(strike_price - entry['CE']['underlyingValue'])
         put_loss = put_oi * abs(strike_price - entry['PE']['underlyingValue'])
         total_strike_loss = call_loss + put_loss
@@ -86,7 +72,7 @@ def analyze_skew_and_max_pain(option_chain):
             total_loss = total_strike_loss
             max_pain_strike = strike_price
 
-    return atm_skew, max_pain_strike
+    return max_pain_strike
 
 # Main function to analyze and alert
 def analyze_and_alert(symbol):
@@ -103,18 +89,32 @@ def analyze_and_alert(symbol):
     for message in directional_messages:
         send_alert(message)
 
-    # Analyze skew and max pain
-    atm_skew, max_pain_strike = analyze_skew_and_max_pain(option_chain)
+    # Analyze max pain
+    max_pain_strike = analyze_skew_and_max_pain(option_chain)
     send_alert(f"Max Pain Strike: {max_pain_strike}")
-    send_alert("ATM Skew Analysis: " + ", ".join([f"Strike: {strike}, Skew: {skew}" for strike, skew in atm_skew]))
 
-# Continuous monitoring (every 10 seconds)
+# Function to check if the script should run
+def should_run():
+    now = datetime.datetime.now()
+    # Check if today is a weekend
+    if now.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+        return False
+    # Check if current time is within 9:15 AM to 3:30 PM
+    start_time = datetime.time(9, 15)
+    end_time = datetime.time(15, 30)
+    return start_time <= now.time() <= end_time
+
+# Continuous monitoring
 if __name__ == "__main__":
     symbol = "NIFTY"
-    print(f"Monitoring {symbol} option chain... Press Ctrl+C to stop.")
+    print(f"Monitoring {symbol} option chain... Script will run between 9:15 AM and 3:30 PM on weekdays.")
     try:
         while True:
-            analyze_and_alert(symbol)
-            time.sleep(10)  # Wait for 10 seconds
+            if should_run():
+                analyze_and_alert(symbol)
+                time.sleep(5)  # Wait for 5 seconds
+            else:
+                print("Outside trading hours or weekend. Sleeping for 60 seconds.")
+                time.sleep(60)  # Wait for 1 minute before checking again
     except KeyboardInterrupt:
         print("\nTerminated by user.")
