@@ -24,8 +24,8 @@ DB_CONFIG = {
 SLACK_WEBHOOK_URL = 'https://hooks.slack.com/services/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'
 
 # Bypass flag
-BYPASS_MARKET_HOURS_CHECK = False  # Set to True to bypass the market hours check
-SEND_ALERTS = True
+BYPASS_MARKET_HOURS_CHECK = True  # Set to True to bypass the market hours check
+SEND_ALERTS = False
 
 
 def get_max_p_change_for_today(conn, identifier):
@@ -92,81 +92,164 @@ def fetch_data_from_nse(symbol):
     return payload
 
 # Insert fetched data into the PostgreSQL database
+# def insert_data_into_db(conn, data):
+#     logging.info("Inserting data")
+    
+#     insert_query = '''
+#     INSERT INTO option_data (
+#         index_name, strike_price, expiry_date, open_interest, change_in_open_interest,
+#         p_change, total_traded_volume, implied_volatility, last_price, total_buy_quantity,
+#         total_sell_quantity, bid_qty, bid_price, ask_qty, ask_price, underlying_value, option_type, identifier, created_at
+#     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+#     '''
+
+#     alerts = []  # List to store alert messages
+#     threshold = 100  # Set your alert threshold percentage
+
+#     try:
+#         with conn.cursor() as cur:
+#             for option in data['filtered']['data']:
+#                 underlying_value = option['PE']['underlyingValue'] if 'PE' in option else option['CE']['underlyingValue'] if 'CE' in option else None
+
+#                 for option_type in ['PE', 'CE']:
+#                     if option_type in option and option[option_type]:
+#                         option_data = option[option_type]
+
+#                         # Check if the option is in the money
+#                         in_the_money = False
+#                         if option_type == 'PE':
+#                             # For PE (Put option), strike price must be greater than underlying value
+#                             if option['strikePrice'] > underlying_value:
+#                                 in_the_money = True
+#                         elif option_type == 'CE':
+#                             # For CE (Call option), strike price must be less than underlying value
+#                             if option['strikePrice'] < underlying_value:
+#                                 in_the_money = True
+
+#                         # Only process the first 10 ITM options for each type
+#                         if in_the_money:
+#                             max_p_change = get_max_p_change_for_today(conn, option_data["identifier"])
+
+#                             date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+
+#                             if max_p_change != None and abs(option_data['pChange']) >= threshold and abs(option_data['pChange']) > max_p_change and SEND_ALERTS:
+#                                 # Check for alerts based on p_change and in-the-money condition
+#                                 alert_message = f"Alert: {date_time} {option_data['identifier']} option at strike price {option['strikePrice']} has p_change of {option_data['pChange']}% and is in the money (Underlying Value: {underlying_value})."
+#                                 alerts.append(alert_message)
+#                                 send_alert_to_slack(alert_message)  # Send alert to Slack
+
+#                             # Logging the current data being processed
+#                             logging.info(f"Inserting data for {option_data['underlying']} {option_type} at strike price {option['strikePrice']}.")
+
+#                             cur.execute(insert_query, (
+#                                 option_data['underlying'],
+#                                 option['strikePrice'],
+#                                 option_data['expiryDate'],
+#                                 option_data['openInterest'],
+#                                 option_data['changeinOpenInterest'],
+#                                 option_data['pChange'],
+#                                 option_data['totalTradedVolume'],
+#                                 option_data['impliedVolatility'],
+#                                 option_data['lastPrice'],
+#                                 option_data['totalBuyQuantity'],
+#                                 option_data['totalSellQuantity'],
+#                                 option_data['bidQty'],
+#                                 option_data['bidprice'],
+#                                 option_data['askQty'],
+#                                 option_data['askPrice'],
+#                                 option_data['underlyingValue'],
+#                                 option_type,
+#                                 option_data['identifier'],
+#                                 datetime.now()
+#                             ))
+
+#             conn.commit()
+#             logging.info("Data inserted successfully!")
+#     except Exception as e:
+#         logging.error(f"Error inserting data into the database: {e}")
+
+#     return alerts  # Return alerts for processing
+
 def insert_data_into_db(conn, data):
     logging.info("Inserting data")
-    
+
     insert_query = '''
     INSERT INTO option_data (
         index_name, strike_price, expiry_date, open_interest, change_in_open_interest,
         p_change, total_traded_volume, implied_volatility, last_price, total_buy_quantity,
         total_sell_quantity, bid_qty, bid_price, ask_qty, ask_price, underlying_value, option_type, identifier, created_at
-    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    ) VALUES %s
     '''
 
     alerts = []  # List to store alert messages
     threshold = 100  # Set your alert threshold percentage
+    records_to_insert = []  # Collect data for batch insertion
 
     try:
-        with conn.cursor() as cur:
-            for option in data['filtered']['data']:
-                underlying_value = option['PE']['underlyingValue'] if 'PE' in option else option['CE']['underlyingValue'] if 'CE' in option else None
+        for option in data['filtered']['data']:
+            underlying_value = (
+                option['PE']['underlyingValue']
+                if 'PE' in option else option['CE']['underlyingValue']
+                if 'CE' in option else None
+            )
 
-                for option_type in ['PE', 'CE']:
-                    if option_type in option and option[option_type]:
-                        option_data = option[option_type]
+            for option_type in ['PE', 'CE']:
+                if option_type in option and option[option_type]:
+                    option_data = option[option_type]
 
-                        # Check if the option is in the money
-                        in_the_money = False
-                        if option_type == 'PE':
-                            # For PE (Put option), strike price must be greater than underlying value
-                            if option['strikePrice'] > underlying_value:
-                                in_the_money = True
-                        elif option_type == 'CE':
-                            # For CE (Call option), strike price must be less than underlying value
-                            if option['strikePrice'] < underlying_value:
-                                in_the_money = True
+                    # Check if the option is in the money
+                    in_the_money = False
+                    if option_type == 'PE':
+                        if option['strikePrice'] > underlying_value:
+                            in_the_money = True
+                    elif option_type == 'CE':
+                        if option['strikePrice'] < underlying_value:
+                            in_the_money = True
 
-                        # Only process the first 10 ITM options for each type
-                        if in_the_money:
-                            max_p_change = get_max_p_change_for_today(conn, option_data["identifier"])
+                    if in_the_money:
+                        max_p_change = get_max_p_change_for_today(conn, option_data["identifier"])
 
-                            date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
+                        date_time = datetime.now().strftime("%m/%d/%Y, %H:%M:%S")
 
-                            if max_p_change != None and abs(option_data['pChange']) >= threshold and abs(option_data['pChange']) > max_p_change and SEND_ALERTS:
-                                # Check for alerts based on p_change and in-the-money condition
-                                alert_message = f"Alert: {date_time} {option_data['identifier']} option at strike price {option['strikePrice']} has p_change of {option_data['pChange']}% and is in the money (Underlying Value: {underlying_value})."
-                                alerts.append(alert_message)
-                                send_alert_to_slack(alert_message)  # Send alert to Slack
+                        if max_p_change is not None and abs(option_data['pChange']) >= threshold and abs(option_data['pChange']) > max_p_change and SEND_ALERTS:
+                            alert_message = f"Alert: {date_time} {option_data['identifier']} option at strike price {option['strikePrice']} has p_change of {option_data['pChange']}% and is in the money (Underlying Value: {underlying_value})."
+                            alerts.append(alert_message)
+                            send_alert_to_slack(alert_message)
 
-                            # Logging the current data being processed
-                            logging.info(f"Inserting data for {option_data['underlying']} {option_type} at strike price {option['strikePrice']}.")
+                        # Add the data to the batch insert list
+                        records_to_insert.append((
+                            option_data['underlying'],
+                            option['strikePrice'],
+                            option_data['expiryDate'],
+                            option_data['openInterest'],
+                            option_data['changeinOpenInterest'],
+                            option_data['pChange'],
+                            option_data['totalTradedVolume'],
+                            option_data['impliedVolatility'],
+                            option_data['lastPrice'],
+                            option_data['totalBuyQuantity'],
+                            option_data['totalSellQuantity'],
+                            option_data['bidQty'],
+                            option_data['bidprice'],
+                            option_data['askQty'],
+                            option_data['askPrice'],
+                            option_data['underlyingValue'],
+                            option_type,
+                            option_data['identifier'],
+                            datetime.now()
+                        ))
 
-                            cur.execute(insert_query, (
-                                option_data['underlying'],
-                                option['strikePrice'],
-                                option_data['expiryDate'],
-                                option_data['openInterest'],
-                                option_data['changeinOpenInterest'],
-                                option_data['pChange'],
-                                option_data['totalTradedVolume'],
-                                option_data['impliedVolatility'],
-                                option_data['lastPrice'],
-                                option_data['totalBuyQuantity'],
-                                option_data['totalSellQuantity'],
-                                option_data['bidQty'],
-                                option_data['bidprice'],
-                                option_data['askQty'],
-                                option_data['askPrice'],
-                                option_data['underlyingValue'],
-                                option_type,
-                                option_data['identifier'],
-                                datetime.now()
-                            ))
+        # Perform the batch insert using psycopg2.extras.execute_values
+        if records_to_insert:
+            from psycopg2.extras import execute_values
+            with conn.cursor() as cur:
+                execute_values(cur, insert_query, records_to_insert)
+                conn.commit()
 
-            conn.commit()
-            logging.info("Data inserted successfully!")
+        logging.info("Data inserted successfully!")
     except Exception as e:
         logging.error(f"Error inserting data into the database: {e}")
+        conn.rollback()
 
     return alerts  # Return alerts for processing
 
